@@ -103,17 +103,11 @@ app.post('/capture', async (req, res) => {
     // 2. Otherwise, download it
     console.log(`LOG: [CACHE MISS] Fetching new page: ${targetUrl}`);
     let browser;
+    const chromeExecutablePath = process.env.CHROME_EXECUTABLE_PATH;
     try {
-        console.log('LOG: Attempting to launch Puppeteer browser with args:', [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox', 
-            '--disable-dev-shm-usage', 
-            '--no-zygote', 
-            '--disable-web-security'
-        ]);
-        browser = await puppeteer.launch({ 
-            headless: true, 
-            executablePath: '/usr/bin/google-chrome', // Explicitly pointing to Chrome in the Docker image
+        console.log('LOG: Attempting to launch Puppeteer browser.');
+        const launchOptions = {
+            headless: true,
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox', 
@@ -121,7 +115,16 @@ app.post('/capture', async (req, res) => {
                 '--no-zygote', 
                 '--disable-web-security'
             ] 
-        });
+        };
+
+        if (chromeExecutablePath) {
+            launchOptions.executablePath = chromeExecutablePath;
+            console.log(`LOG: Using explicit executablePath: ${chromeExecutablePath}`);
+        } else {
+            console.log('LOG: executablePath not specified, Puppeteer will attempt auto-detection.');
+        }
+
+        browser = await puppeteer.launch(launchOptions);
         console.log('LOG: Puppeteer browser launched successfully.');
         
         console.log('LOG: Creating new page.');
