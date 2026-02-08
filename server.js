@@ -76,45 +76,67 @@ app.get('/', (req, res) => {
 });
 
 app.post('/capture', async (req, res) => {
+    console.log('--- LOG: Received /capture request ---');
     let targetUrl = req.body.url;
-    if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
+    console.log(`LOG: Target URL received: ${targetUrl}`);
+    if (!targetUrl.startsWith('http')) {
+        targetUrl = 'https://' + targetUrl;
+        console.log(`LOG: Prepended https:// to URL: ${targetUrl}`);
+    }
     
     const urlObj = new URL(targetUrl);
     
-    // Create a path based on the hostname + the URL path
-    // Example: crazygames.com/game-name -> saved_sites/crazygames_com/game_name/index.html
     const safeHostname = urlObj.hostname.replace(/[^a-z0-9]/gi, '_');
     const safePath = urlObj.pathname.replace(/[^a-z0-9]/gi, '_');
     const siteDir = path.join(STORAGE_DIR, safeHostname, safePath);
     const siteFile = path.join(siteDir, 'index.html');
+    console.log(`LOG: Site directory: ${siteDir}, Site file: ${siteFile}`);
 
     // 1. Check if this specific page exists
     if (fs.existsSync(siteFile)) {
-        console.log(`[LOCAL] Loading from: ${siteFile}`);
+        console.log(`LOG: [CACHE HIT] Local file found: ${siteFile}`);
         const savedHtml = fs.readFileSync(siteFile, 'utf8');
+        console.log('LOG: Successfully read saved HTML from cache.');
         return res.json({ html: savedHtml, fromCache: true, path: urlObj.pathname });
     }
 
     // 2. Otherwise, download it
-    console.log(`[FETCH] Capturing new page: ${targetUrl}`);
+    console.log(`LOG: [CACHE MISS] Fetching new page: ${targetUrl}`);
     let browser;
     try {
+        console.log('LOG: Attempting to launch Puppeteer browser with args:', [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox', 
+            '--disable-dev-shm-usage', 
+            '--no-zygote', 
+            '--disable-web-security'
+        ]);
         browser = await puppeteer.launch({ 
-    headless: true, 
-    args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
-        '--disable-dev-shm-usage', 
-        '--no-zygote', // Helps with resource usage in constrained environments
-        '--disable-web-security'
-    ] 
-});
+            headless: true, 
+            executablePath: '/usr/bin/google-chrome', // Explicitly pointing to Chrome in the Docker image
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--no-zygote', 
+                '--disable-web-security'
+            ] 
+        });
+        console.log('LOG: Puppeteer browser launched successfully.');
+        
+        console.log('LOG: Creating new page.');
         const page = await browser.newPage();
+        console.log('LOG: New page created.');
+        
+        console.log('LOG: Setting BypassCSP to true.');
         await page.setBypassCSP(true);
+        
+        console.log(`LOG: Navigating to ${targetUrl} with waitUntil: 'networkidle2', timeout: 60000ms.`);
         await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        console.log('LOG: Page navigation complete (networkidle2 reached).');
 
+        console.log('LOG: Evaluating page content to hijack links.');
         const gameData = await page.evaluate(() => {
-            // Hijack links to keep them in our system
             document.querySelectorAll('a').forEach(link => {
                 link.onclick = (e) => {
                     e.preventDefault();
@@ -123,16 +145,31 @@ app.post('/capture', async (req, res) => {
             });
             return document.documentElement.outerHTML;
         });
+        console.log('LOG: Page evaluation complete. Captured HTML length:', gameData.length);
 
-        // Ensure directories exist and save
-        if (!fs.existsSync(siteDir)) fs.mkdirSync(siteDir, { recursive: true });
+        console.log('LOG: Checking if site directory exists.');
+        if (!fs.existsSync(siteDir)) {
+            console.log(`LOG: Site directory ${siteDir} does not exist, creating it.`);
+            fs.mkdirSync(siteDir, { recursive: true });
+            console.log(`LOG: Created directory: ${siteDir}`);
+        }
+        console.log(`LOG: Writing captured HTML to file: ${siteFile}`);
         fs.writeFileSync(siteFile, gameData);
+        console.log(`LOG: Successfully saved page to: ${siteFile}`);
 
+        console.log('LOG: Closing browser.');
         await browser.close();
+        console.log('LOG: Browser closed.');
         res.json({ html: gameData, fromCache: false, path: urlObj.pathname });
 
     } catch (error) {
-        if (browser) await browser.close();
+        console.error(`--- ERROR: Puppeteer capture failed: ${error.message} ---`);
+        console.error('ERROR: Full error stack:', error.stack);
+        if (browser) {
+            console.log('LOG: Closing browser in error handler.');
+            await browser.close();
+            console.log('LOG: Browser closed in error handler.');
+        }
         res.status(500).json({ error: error.message });
     }
 });
