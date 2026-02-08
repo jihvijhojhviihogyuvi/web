@@ -1,0 +1,1 @@
+{ "taskId": "task_20260207T120610Z", "status": "running", "agent": "coder-agent", "prompt": "deplo to render from cli", "planFile": ".gemini/agents/plans/task_20260207T120610Z_plan.md", "logFile": ".gemini/agents/logs/task_20260207T120610Z.log", "createdAt": "2026-02-07T12:06:10Z" }
