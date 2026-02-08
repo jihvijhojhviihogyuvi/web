@@ -12,6 +12,10 @@ COPY package*.json ./
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm ci --verbose
 
+# Add diagnostic command for Chrome executable
+RUN ls -l /usr/bin/google-chrome || true
+RUN test -f /usr/bin/google-chrome && echo "Chrome executable found" || echo "Chrome executable NOT found"
+
 # Copy the rest of your code
 COPY . .
 
