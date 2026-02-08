@@ -101,10 +101,12 @@ app.post('/capture', async (req, res) => {
     try {
         browser = await puppeteer.launch({ 
     headless: true, 
+    executablePath: '/usr/bin/google-chrome', // Explicitly point to the Docker-installed Chrome
     args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox', 
         '--disable-dev-shm-usage', 
+        '--no-zygote', // Helps with resource usage in constrained environments
         '--disable-web-security'
     ] 
 });
